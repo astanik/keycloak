@@ -1887,16 +1887,17 @@ public class RealmAdapter implements RealmModel, JpaModel<RealmEntity> {
 
     @Override
     public List<ClientScopeModel> getDefaultClientScopes(boolean defaultScope) {
-        TypedQuery<String> query = em.createNamedQuery("defaultClientScopeRealmMappingIdsByRealm", String.class);
+        TypedQuery<ClientScopeEntity> query = em.createNamedQuery("defaultClientScopeRealmMappingByRealm", ClientScopeEntity.class);
         query.setParameter("realm", getEntity());
         query.setParameter("defaultScope", defaultScope);
-        List<String> ids = query.getResultList();
+        List<ClientScopeEntity> clientScopeEntities = query.getResultList();
 
         List<ClientScopeModel>  clientScopes = new LinkedList<>();
-        for (String clientScopeId : ids) {
-            ClientScopeModel clientScope = getClientScopeById(clientScopeId);
-            if (clientScope == null) continue;
-            clientScopes.add(clientScope);
+        for (ClientScopeEntity clientScopeEntity : clientScopeEntities) {
+            // Check if application belongs to this realm
+            if (clientScopeEntity != null && realm.getId().equals(clientScopeEntity.getRealm().getId())) {
+            	clientScopes.add(new ClientScopeAdapter(this, em, session, clientScopeEntity));
+            }
         }
         return clientScopes;
     }

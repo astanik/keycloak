@@ -36,7 +36,8 @@ import javax.persistence.Table;
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
 @NamedQueries({
-        @NamedQuery(name="clientScopeClientMappingIdsByClient", query="select m.clientScope.id from ClientScopeClientMappingEntity m where m.client = :client and m.defaultScope = :defaultScope"),
+//        @NamedQuery(name="clientScopeClientMappingByClient", query="select s from ClientScopeEntity s where s.id in (select m.clientScope.id from ClientScopeClientMappingEntity m where m.client = :client and m.defaultScope = :defaultScope)"),
+        @NamedQuery(name="clientScopeClientMappingByClient", query="select s from ClientScopeEntity s, ClientScopeClientMappingEntity m where s.id = m.clientScope.id and m.client = :client and m.defaultScope = :defaultScope"),
         @NamedQuery(name="deleteClientScopeClientMapping", query="delete from ClientScopeClientMappingEntity where client = :client and clientScope = :clientScope"),
         @NamedQuery(name="deleteClientScopeClientMappingByClient", query="delete from ClientScopeClientMappingEntity where client = :client")
 })

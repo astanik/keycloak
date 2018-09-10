@@ -347,20 +347,22 @@ public class ClientAdapter implements ClientModel, JpaModel<ClientEntity> {
 
     @Override
     public Map<String, ClientScopeModel> getClientScopes(boolean defaultScope, boolean filterByProtocol) {
-        TypedQuery<String> query = em.createNamedQuery("clientScopeClientMappingIdsByClient", String.class);
+        TypedQuery<ClientScopeEntity> query = em.createNamedQuery("clientScopeClientMappingByClient", ClientScopeEntity.class);
         query.setParameter("client", getEntity());
         query.setParameter("defaultScope", defaultScope);
-        List<String> ids = query.getResultList();
+        List<ClientScopeEntity> clientScopeEntities = query.getResultList();
 
         // Defaults to openid-connect
         String clientProtocol = getProtocol() == null ? OIDCLoginProtocol.LOGIN_PROTOCOL : getProtocol();
 
         Map<String, ClientScopeModel> clientScopes = new HashMap<>();
-        for (String clientScopeId : ids) {
-            ClientScopeModel clientScope = realm.getClientScopeById(clientScopeId);
-            if (clientScope == null) continue;
-            if (!filterByProtocol || clientScope.getProtocol().equals(clientProtocol)) {
-                clientScopes.put(clientScope.getName(), clientScope);
+        for (ClientScopeEntity clientScopeEntity : clientScopeEntities) {
+            // Check if application belongs to this realm
+            if (clientScopeEntity != null && realm.getId().equals(clientScopeEntity.getRealm().getId())) {
+                ClientScopeAdapter clientScope = new ClientScopeAdapter(realm, em, session, clientScopeEntity);
+                if (!filterByProtocol || clientScope.getProtocol().equals(clientProtocol)) {
+                    clientScopes.put(clientScope.getName(), clientScope);
+                }
             }
         }
         return clientScopes;
