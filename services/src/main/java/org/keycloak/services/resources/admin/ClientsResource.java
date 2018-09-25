@@ -31,6 +31,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ModelDuplicateException;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.models.utils.ModelToRepresentation;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.authorization.ResourceServerRepresentation;
@@ -44,6 +45,7 @@ import org.keycloak.services.validation.ClientValidator;
 import org.keycloak.services.validation.PairwiseClientValidator;
 import org.keycloak.services.validation.ValidationMessages;
 
+import javax.transaction.Transactional;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
@@ -69,22 +71,22 @@ import java.util.Properties;
  * @version $Revision: 1 $
  */
 public class ClientsResource {
-    protected static final Logger logger = Logger.getLogger(ClientsResource.class);
-    protected RealmModel realm;
-    private AdminPermissionEvaluator auth;
-    private AdminEventBuilder adminEvent;
+	protected static final Logger logger = Logger.getLogger(ClientsResource.class);
+	protected RealmModel realm;
+	private AdminPermissionEvaluator auth;
+	private AdminEventBuilder adminEvent;
 
-    @Context
-    protected KeycloakSession session;
+	@Context
+	protected KeycloakSession session;
 
-    public ClientsResource(RealmModel realm, AdminPermissionEvaluator auth, AdminEventBuilder adminEvent) {
-        this.realm = realm;
-        this.auth = auth;
-        this.adminEvent = adminEvent.resource(ResourceType.CLIENT);
+	public ClientsResource(RealmModel realm, AdminPermissionEvaluator auth, AdminEventBuilder adminEvent) {
+		this.realm = realm;
+		this.auth = auth;
+		this.adminEvent = adminEvent.resource(ResourceType.CLIENT);
 
-    }
+	}
 
-    /**
+	/**
      * Get clients belonging to the realm
      *
      * Returns a list of clients belonging to the realm
@@ -96,137 +98,164 @@ public class ClientsResource {
     @Produces(MediaType.APPLICATION_JSON)
     @NoCache
     public List<ClientRepresentation> getClients(@QueryParam("clientId") String clientId, @QueryParam("viewableOnly") @DefaultValue("false") boolean viewableOnly) {
-        List<ClientRepresentation> rep = new ArrayList<>();
-
-        if (clientId == null || clientId.trim().equals("")) {
-            List<ClientModel> clientModels = realm.getClients();
-            auth.clients().requireList();
-            boolean view = auth.clients().canView();
-            for (ClientModel clientModel : clientModels) {
-                if (view || auth.clients().canView(clientModel)) {
-                    ClientRepresentation representation = ModelToRepresentation.toRepresentation(clientModel);
-
-                    if (Profile.isFeatureEnabled(Profile.Feature.AUTHORIZATION)) {
-                        AuthorizationService authorizationService = getAuthorizationService(clientModel);
-
-                        if (authorizationService.isEnabled()) {
-                            representation.setAuthorizationServicesEnabled(true);
-                        }
-                    }
-
-                    rep.add(representation);
-                    representation.setAccess(auth.clients().getAccess(clientModel));
-                } else if (!viewableOnly) {
-                    ClientRepresentation client = new ClientRepresentation();
-                    client.setId(clientModel.getId());
-                    client.setClientId(clientModel.getClientId());
-                    client.setDescription(clientModel.getDescription());
-                    rep.add(client);
-                }
-            }
-        } else {
-            ClientModel clientModel = realm.getClientByClientId(clientId);
-            if (clientModel != null) {
-                if (auth.clients().canView(clientModel)) {
-                    ClientRepresentation representation = ModelToRepresentation.toRepresentation(clientModel);
-                    representation.setAccess(auth.clients().getAccess(clientModel));
-                    rep.add(representation);
-                } else if (!viewableOnly && auth.clients().canList()){
-                    ClientRepresentation client = new ClientRepresentation();
-                    client.setId(clientModel.getId());
-                    client.setClientId(clientModel.getClientId());
-                    client.setDescription(clientModel.getDescription());
-                    rep.add(client);
-
-                } else {
-                    throw new ForbiddenException();
-                }
-            }
-        }
-        return rep;
+    	ClientJob job = new ClientJob(this, clientId, viewableOnly);
+    	KeycloakModelUtils.suspendJtaTransaction(session.getKeycloakSessionFactory(), job);
+    	return job.getResult();
     }
 
-    private AuthorizationService getAuthorizationService(ClientModel clientModel) {
-        return new AuthorizationService(session, clientModel, auth, adminEvent);
+    private static class ClientJob implements Runnable {
+    	
+    	private List<ClientRepresentation> rep = new ArrayList<>();
+    	
+    	private final ClientsResource resource;
+    	private final String clientId;
+    	private final boolean viewableOnly;
+    	
+    	public ClientJob(ClientsResource resource, String clientId, boolean viewableOnly) {
+    		super();
+    		this.resource = resource;
+    		this.clientId = clientId;
+        	this.viewableOnly = viewableOnly;
+    	}
+    	
+    	@Override
+		public void run() {
+			if (clientId == null || clientId.trim().equals("")) {
+				List<ClientModel> clientModels = resource.realm.getClients();
+				resource.auth.clients().requireList();
+				boolean view = resource.auth.clients().canView();
+				for (ClientModel clientModel : clientModels) {
+					if (view || resource.auth.clients().canView(clientModel)) {
+						ClientRepresentation representation = ModelToRepresentation.toRepresentation(clientModel);
+						
+						if (Profile.isFeatureEnabled(Profile.Feature.AUTHORIZATION)) {
+							AuthorizationService authorizationService = resource.getAuthorizationService(clientModel);
+							
+							if (authorizationService.isEnabled()) {
+								representation.setAuthorizationServicesEnabled(true);
+							}
+						}
+						
+						rep.add(representation);
+						representation.setAccess(resource.auth.clients().getAccess(clientModel));
+					} else if (!viewableOnly) {
+						ClientRepresentation client = new ClientRepresentation();
+						client.setId(clientModel.getId());
+						client.setClientId(clientModel.getClientId());
+						client.setDescription(clientModel.getDescription());
+						rep.add(client);
+					}
+				}
+			} else {
+				ClientModel clientModel = resource.realm.getClientByClientId(clientId);
+				if (clientModel != null) {
+					if (resource.auth.clients().canView(clientModel)) {
+						ClientRepresentation representation = ModelToRepresentation.toRepresentation(clientModel);
+						representation.setAccess(resource.auth.clients().getAccess(clientModel));
+						rep.add(representation);
+					} else if (!viewableOnly && resource.auth.clients().canList()){
+						ClientRepresentation client = new ClientRepresentation();
+						client.setId(clientModel.getId());
+						client.setClientId(clientModel.getClientId());
+						client.setDescription(clientModel.getDescription());
+						rep.add(client);
+						
+					} else {
+						throw new ForbiddenException();
+					}
+				}
+			}
+		}
+    	
+    	public List<ClientRepresentation> getResult() {
+    		return this.rep;
+    	}
     }
+    
+	private AuthorizationService getAuthorizationService(ClientModel clientModel) {
+		return new AuthorizationService(session, clientModel, auth, adminEvent);
+	}
 
-    /**
-     * Create a new client
-     *
-     * Client's client_id must be unique!
-     *
-     * @param rep
-     * @return
-     */
-    @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    public Response createClient(final ClientRepresentation rep) {
-        auth.clients().requireManage();
+	/**
+	 * Create a new client
+	 *
+	 * Client's client_id must be unique!
+	 *
+	 * @param rep
+	 * @return
+	 */
+	@POST
+	@Consumes(MediaType.APPLICATION_JSON)
+	public Response createClient(final ClientRepresentation rep) {
+		auth.clients().requireManage();
 
-        ValidationMessages validationMessages = new ValidationMessages();
-        if (!ClientValidator.validate(rep, validationMessages) || !PairwiseClientValidator.validate(session, rep, validationMessages)) {
-            Properties messages = AdminRoot.getMessages(session, realm, auth.adminAuth().getToken().getLocale());
-            throw new ErrorResponseException(
-                    validationMessages.getStringMessages(),
-                    validationMessages.getStringMessages(messages),
-                    Response.Status.BAD_REQUEST
-            );
-        }
+		ValidationMessages validationMessages = new ValidationMessages();
+		if (!ClientValidator.validate(rep, validationMessages)
+				|| !PairwiseClientValidator.validate(session, rep, validationMessages)) {
+			Properties messages = AdminRoot.getMessages(session, realm, auth.adminAuth().getToken().getLocale());
+			throw new ErrorResponseException(validationMessages.getStringMessages(),
+					validationMessages.getStringMessages(messages), Response.Status.BAD_REQUEST);
+		}
 
-        try {
-            ClientModel clientModel = ClientManager.createClient(session, realm, rep, true);
+		try {
+			ClientModel clientModel = ClientManager.createClient(session, realm, rep, true);
 
-            if (TRUE.equals(rep.isServiceAccountsEnabled())) {
-                UserModel serviceAccount = session.users().getServiceAccount(clientModel);
+			if (TRUE.equals(rep.isServiceAccountsEnabled())) {
+				UserModel serviceAccount = session.users().getServiceAccount(clientModel);
 
-                if (serviceAccount == null) {
-                    new ClientManager(new RealmManager(session)).enableServiceAccount(clientModel);
-                }
-            }
+				if (serviceAccount == null) {
+					new ClientManager(new RealmManager(session)).enableServiceAccount(clientModel);
+				}
+			}
 
-            adminEvent.operation(OperationType.CREATE).resourcePath(session.getContext().getUri(), clientModel.getId()).representation(rep).success();
+			adminEvent.operation(OperationType.CREATE).resourcePath(session.getContext().getUri(), clientModel.getId())
+					.representation(rep).success();
 
-            if (Profile.isFeatureEnabled(Profile.Feature.AUTHORIZATION)) {
-                if (TRUE.equals(rep.getAuthorizationServicesEnabled())) {
-                    AuthorizationService authorizationService = getAuthorizationService(clientModel);
+			if (Profile.isFeatureEnabled(Profile.Feature.AUTHORIZATION)) {
+				if (TRUE.equals(rep.getAuthorizationServicesEnabled())) {
+					AuthorizationService authorizationService = getAuthorizationService(clientModel);
 
-                    authorizationService.enable(true);
+					authorizationService.enable(true);
 
-                    ResourceServerRepresentation authorizationSettings = rep.getAuthorizationSettings();
+					ResourceServerRepresentation authorizationSettings = rep.getAuthorizationSettings();
 
-                    if (authorizationSettings != null) {
-                        authorizationService.resourceServer().importSettings(authorizationSettings);
-                    }
-                }
-            }
+					if (authorizationSettings != null) {
+						authorizationService.resourceServer().importSettings(authorizationSettings);
+					}
+				}
+			}
 
-            return Response.created(session.getContext().getUri().getAbsolutePathBuilder().path(clientModel.getId()).build()).build();
-        } catch (ModelDuplicateException e) {
-            return ErrorResponse.exists("Client " + rep.getClientId() + " already exists");
-        }
-    }
+			return Response
+					.created(session.getContext().getUri().getAbsolutePathBuilder().path(clientModel.getId()).build())
+					.build();
+		} catch (ModelDuplicateException e) {
+			return ErrorResponse.exists("Client " + rep.getClientId() + " already exists");
+		}
+	}
 
-    /**
-     * Base path for managing a specific client.
-     *
-     * @param id id of client (not client-id)
-     * @return
-     */
-    @Path("{id}")
-    public ClientResource getClient(final @PathParam("id") String id) {
+	/**
+	 * Base path for managing a specific client.
+	 *
+	 * @param id id of client (not client-id)
+	 * @return
+	 */
+	@Path("{id}")
+	public ClientResource getClient(final @PathParam("id") String id) {
 
-        ClientModel clientModel = realm.getClientById(id);
-        if (clientModel == null) {
-            // we do this to make sure somebody can't phish ids
-            if (auth.clients().canList()) throw new NotFoundException("Could not find client");
-            else throw new ForbiddenException();
-        }
+		ClientModel clientModel = realm.getClientById(id);
+		if (clientModel == null) {
+			// we do this to make sure somebody can't phish ids
+			if (auth.clients().canList())
+				throw new NotFoundException("Could not find client");
+			else
+				throw new ForbiddenException();
+		}
 
-        session.getContext().setClient(clientModel);
+		session.getContext().setClient(clientModel);
 
-        ClientResource clientResource = new ClientResource(realm, auth, clientModel, session, adminEvent);
-        ResteasyProviderFactory.getInstance().injectProperties(clientResource);
-        return clientResource;
-    }
+		ClientResource clientResource = new ClientResource(realm, auth, clientModel, session, adminEvent);
+		ResteasyProviderFactory.getInstance().injectProperties(clientResource);
+		return clientResource;
+	}
 
 }
