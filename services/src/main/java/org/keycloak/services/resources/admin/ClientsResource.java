@@ -98,79 +98,120 @@ public class ClientsResource {
     @Produces(MediaType.APPLICATION_JSON)
     @NoCache
     public List<ClientRepresentation> getClients(@QueryParam("clientId") String clientId, @QueryParam("viewableOnly") @DefaultValue("false") boolean viewableOnly) {
-    	ClientJob job = new ClientJob(this, clientId, viewableOnly);
-    	KeycloakModelUtils.suspendJtaTransaction(session.getKeycloakSessionFactory(), job);
-    	return job.getResult();
+//    	ClientJob job = new ClientJob(this, clientId, viewableOnly);
+//    	KeycloakModelUtils.suspendJtaTransaction(session.getKeycloakSessionFactory(), job);
+//    	return job.getResult();
+
+    	List<ClientRepresentation> rep = new ArrayList<>();
+
+        if (clientId == null || clientId.trim().equals("")) {
+            List<ClientModel> clientModels = realm.getClients();
+            auth.clients().requireList();
+            boolean view = auth.clients().canView();
+            for (ClientModel clientModel : clientModels) {
+                if (view || auth.clients().canView(clientModel)) {
+                    ClientRepresentation representation = ModelToRepresentation.toRepresentation(clientModel, session);
+                    rep.add(representation);
+                    representation.setAccess(auth.clients().getAccess(clientModel));
+                } else if (!viewableOnly) {
+                    ClientRepresentation client = new ClientRepresentation();
+                    client.setId(clientModel.getId());
+                    client.setClientId(clientModel.getClientId());
+                    client.setDescription(clientModel.getDescription());
+                    rep.add(client);
+                }
+            }
+        } else {
+            ClientModel clientModel = realm.getClientByClientId(clientId);
+            if (clientModel != null) {
+                if (auth.clients().canView(clientModel)) {
+                    ClientRepresentation representation = ModelToRepresentation.toRepresentation(clientModel, session);
+                    representation.setAccess(auth.clients().getAccess(clientModel));
+                    rep.add(representation);
+                } else if (!viewableOnly && auth.clients().canList()){
+                    ClientRepresentation client = new ClientRepresentation();
+                    client.setId(clientModel.getId());
+                    client.setClientId(clientModel.getClientId());
+                    client.setDescription(clientModel.getDescription());
+                    rep.add(client);
+
+                } else {
+                    throw new ForbiddenException();
+                }
+            }
+        }
+        return rep;
+
     }
 
-    private static class ClientJob implements Runnable {
-    	
-    	private List<ClientRepresentation> rep = new ArrayList<>();
-    	
-    	private final ClientsResource resource;
-    	private final String clientId;
-    	private final boolean viewableOnly;
-    	
-    	public ClientJob(ClientsResource resource, String clientId, boolean viewableOnly) {
-    		super();
-    		this.resource = resource;
-    		this.clientId = clientId;
-        	this.viewableOnly = viewableOnly;
-    	}
-    	
-    	@Override
-		public void run() {
-			if (clientId == null || clientId.trim().equals("")) {
-				List<ClientModel> clientModels = resource.realm.getClients();
-				resource.auth.clients().requireList();
-				boolean view = resource.auth.clients().canView();
-				for (ClientModel clientModel : clientModels) {
-					if (view || resource.auth.clients().canView(clientModel)) {
-						ClientRepresentation representation = ModelToRepresentation.toRepresentation(clientModel);
-						
-						if (Profile.isFeatureEnabled(Profile.Feature.AUTHORIZATION)) {
-							AuthorizationService authorizationService = resource.getAuthorizationService(clientModel);
-							
-							if (authorizationService.isEnabled()) {
-								representation.setAuthorizationServicesEnabled(true);
-							}
-						}
-						
-						rep.add(representation);
-						representation.setAccess(resource.auth.clients().getAccess(clientModel));
-					} else if (!viewableOnly) {
-						ClientRepresentation client = new ClientRepresentation();
-						client.setId(clientModel.getId());
-						client.setClientId(clientModel.getClientId());
-						client.setDescription(clientModel.getDescription());
-						rep.add(client);
-					}
-				}
-			} else {
-				ClientModel clientModel = resource.realm.getClientByClientId(clientId);
-				if (clientModel != null) {
-					if (resource.auth.clients().canView(clientModel)) {
-						ClientRepresentation representation = ModelToRepresentation.toRepresentation(clientModel);
-						representation.setAccess(resource.auth.clients().getAccess(clientModel));
-						rep.add(representation);
-					} else if (!viewableOnly && resource.auth.clients().canList()){
-						ClientRepresentation client = new ClientRepresentation();
-						client.setId(clientModel.getId());
-						client.setClientId(clientModel.getClientId());
-						client.setDescription(clientModel.getDescription());
-						rep.add(client);
-						
-					} else {
-						throw new ForbiddenException();
-					}
-				}
-			}
-		}
-    	
-    	public List<ClientRepresentation> getResult() {
-    		return this.rep;
-    	}
-    }
+//    private static class ClientJob implements Runnable {
+//    	
+//    	private List<ClientRepresentation> rep = new ArrayList<>();
+//    	
+//    	private final ClientsResource resource;
+//    	private final String clientId;
+//    	private final boolean viewableOnly;
+//    	
+//    	public ClientJob(ClientsResource resource, String clientId, boolean viewableOnly) {
+//    		super();
+//    		this.resource = resource;
+//    		this.clientId = clientId;
+//        	this.viewableOnly = viewableOnly;
+//    	}
+//    	
+//    	@Override
+//		public void run() {
+//			if (clientId == null || clientId.trim().equals("")) {
+//				List<ClientModel> clientModels = resource.realm.getClients();
+//				resource.auth.clients().requireList();
+//				boolean view = resource.auth.clients().canView();
+//				for (ClientModel clientModel : clientModels) {
+//					if (view || resource.auth.clients().canView(clientModel)) {
+//						ClientRepresentation representation = ModelToRepresentation.toRepresentation(clientModel, session);
+//						
+//						if (Profile.isFeatureEnabled(Profile.Feature.AUTHORIZATION)) {
+//							AuthorizationService authorizationService = resource.getAuthorizationService(clientModel);
+//							
+//							if (authorizationService.isEnabled()) {
+//								representation.setAuthorizationServicesEnabled(true);
+//							}
+//						}
+//						
+//						rep.add(representation);
+//						representation.setAccess(resource.auth.clients().getAccess(clientModel));
+//					} else if (!viewableOnly) {
+//						ClientRepresentation client = new ClientRepresentation();
+//						client.setId(clientModel.getId());
+//						client.setClientId(clientModel.getClientId());
+//						client.setDescription(clientModel.getDescription());
+//						rep.add(client);
+//					}
+//				}
+//			} else {
+//				ClientModel clientModel = resource.realm.getClientByClientId(clientId);
+//				if (clientModel != null) {
+//					if (resource.auth.clients().canView(clientModel)) {
+//						ClientRepresentation representation = ModelToRepresentation.toRepresentation(clientModel, session);
+//						representation.setAccess(resource.auth.clients().getAccess(clientModel));
+//						rep.add(representation);
+//					} else if (!viewableOnly && resource.auth.clients().canList()){
+//						ClientRepresentation client = new ClientRepresentation();
+//						client.setId(clientModel.getId());
+//						client.setClientId(clientModel.getClientId());
+//						client.setDescription(clientModel.getDescription());
+//						rep.add(client);
+//						
+//					} else {
+//						throw new ForbiddenException();
+//					}
+//				}
+//			}
+//		}
+//    	
+//    	public List<ClientRepresentation> getResult() {
+//    		return this.rep;
+//    	}
+//    }
     
 	private AuthorizationService getAuthorizationService(ClientModel clientModel) {
 		return new AuthorizationService(session, clientModel, auth, adminEvent);
