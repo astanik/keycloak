@@ -347,23 +347,42 @@ public class ClientAdapter implements ClientModel, JpaModel<ClientEntity> {
 
     @Override
     public Map<String, ClientScopeModel> getClientScopes(boolean defaultScope, boolean filterByProtocol) {
-        TypedQuery<ClientScopeEntity> query = em.createNamedQuery("clientScopeClientMappingByClient", ClientScopeEntity.class);
-        query.setParameter("client", getEntity());
-        query.setParameter("defaultScope", defaultScope);
-        List<ClientScopeEntity> clientScopeEntities = query.getResultList();
+//        TypedQuery<ClientScopeEntity> query = em.createNamedQuery("clientScopeClientMappingByClient", ClientScopeEntity.class);
+//        query.setParameter("client", getEntity());
+//        query.setParameter("defaultScope", defaultScope);
+//        List<ClientScopeEntity> clientScopeEntities = query.getResultList();
+//
+//        // Defaults to openid-connect
+//        String clientProtocol = getProtocol() == null ? OIDCLoginProtocol.LOGIN_PROTOCOL : getProtocol();
+//
+//        Map<String, ClientScopeModel> clientScopes = new HashMap<>();
+//        for (ClientScopeEntity clientScopeEntity : clientScopeEntities) {
+//            // Check if application belongs to this realm
+//            if (clientScopeEntity != null && realm.getId().equals(clientScopeEntity.getRealm().getId())) {
+//                ClientScopeAdapter clientScope = new ClientScopeAdapter(realm, em, session, clientScopeEntity);
+//                if (!filterByProtocol || clientScope.getProtocol().equals(clientProtocol)) {
+//                    clientScopes.put(clientScope.getName(), clientScope);
+//                }
+//            }
+//        }
+//        return clientScopes;
+    	Map<ClientScopeEntity, Boolean> clientScopeEntities = getEntity().getClientScopes();
 
-        // Defaults to openid-connect
+    	// Defaults to openid-connect
         String clientProtocol = getProtocol() == null ? OIDCLoginProtocol.LOGIN_PROTOCOL : getProtocol();
 
         Map<String, ClientScopeModel> clientScopes = new HashMap<>();
-        for (ClientScopeEntity clientScopeEntity : clientScopeEntities) {
-            // Check if application belongs to this realm
-            if (clientScopeEntity != null && realm.getId().equals(clientScopeEntity.getRealm().getId())) {
-                ClientScopeAdapter clientScope = new ClientScopeAdapter(realm, em, session, clientScopeEntity);
-                if (!filterByProtocol || clientScope.getProtocol().equals(clientProtocol)) {
-                    clientScopes.put(clientScope.getName(), clientScope);
-                }
-            }
+        for (ClientScopeEntity clientScopeEntity : clientScopeEntities.keySet()) {
+        	// Check default selector
+        	if(clientScopeEntities.get(clientScopeEntity).equals(defaultScope)) {
+        		// Check if application belongs to this realm
+        		if (clientScopeEntity != null && realm.getId().equals(clientScopeEntity.getRealm().getId())) {
+        			ClientScopeAdapter clientScope = new ClientScopeAdapter(realm, em, session, clientScopeEntity);
+        			if (!filterByProtocol || clientScope.getProtocol().equals(clientProtocol)) {
+        				clientScopes.put(clientScope.getName(), clientScope);
+        			}
+        		}
+        	}
         }
         return clientScopes;
     }

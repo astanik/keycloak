@@ -32,6 +32,7 @@ import javax.persistence.JoinColumn;
 import javax.persistence.JoinTable;
 import javax.persistence.ManyToOne;
 import javax.persistence.MapKeyColumn;
+import javax.persistence.MapKeyJoinColumn;
 import javax.persistence.NamedQueries;
 import javax.persistence.NamedQuery;
 import javax.persistence.OneToMany;
@@ -160,6 +161,12 @@ public class ClientEntity {
     @JoinTable(name="SCOPE_MAPPING", joinColumns = { @JoinColumn(name="CLIENT_ID")}, inverseJoinColumns = { @JoinColumn(name="ROLE_ID")})
     protected Set<RoleEntity> scopeMapping = new HashSet<>();
 
+    @ElementCollection
+    @CollectionTable(name="CLIENT_SCOPE_CLIENT", joinColumns={ @JoinColumn(name="CLIENT_ID") })
+    @MapKeyJoinColumn(name="SCOPE_ID")
+    @Column(name="DEFAULT_SCOPE")
+    private Map<ClientScopeEntity, Boolean> clientScopes = new HashMap<>();
+    
     @ElementCollection
     @MapKeyColumn(name="NAME")
     @Column(name="VALUE")
@@ -428,6 +435,14 @@ public class ClientEntity {
 
     public void setScopeMapping(Set<RoleEntity> scopeMapping) {
         this.scopeMapping = scopeMapping;
+    }
+
+    public Map<ClientScopeEntity, Boolean> getClientScopes() {
+        return clientScopes;
+    }
+
+    public void setClientScopes(Map<ClientScopeEntity, Boolean> clientScopes) {
+        this.clientScopes = clientScopes;
     }
 
     @Override
